@@ -11,6 +11,8 @@ from email.mime.multipart import MIMEMultipart
 from werkzeug.security import generate_password_hash, check_password_hash
 import pdfplumber
 import io
+import plotly.express as px
+from datetime import datetime
 
 # --- CONFIGURATION ---
 DB_NAME = "mca_students_2026.db"
@@ -141,6 +143,15 @@ def init_db():
             course_type TEXT,
             year_of_study TEXT,
             status TEXT DEFAULT 'Pending'
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS announcements (
+            id INTEGER PRIMARY KEY,
+            date_posted TEXT,
+            title TEXT,
+            message TEXT
         )
     """)
     
@@ -279,6 +290,13 @@ if role == "Student Portal":
         student_data = student_row_df.iloc[0]
         
         st.info(f"Welcome back, **{student_data['student_name']}**! Please review your details below.")
+        
+        # Fetch Announcements
+        ann_df = pd.read_sql("SELECT * FROM announcements ORDER BY id DESC", conn)
+        if not ann_df.empty:
+            st.markdown("### 📢 College Announcements")
+            for _, row in ann_df.iterrows():
+                st.warning(f"**{row['title']}** ({row['date_posted']})\n\n{row['message']}")
         
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         with st.form("student_update_form"):
@@ -422,7 +440,7 @@ elif role == "Advisor Dashboard":
     st.markdown("<h1>🔒 Advisor Master Dashboard</h1>", unsafe_allow_html=True)
     st.write("Real-time oversight of student data, updates, and fees.")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Overview", "💰 Fees Management", "📂 Bulk Operations", "📈 Analytics", "📧 Automations"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Overview", "💰 Fees Management", "📂 Bulk Operations", "📈 Analytics", "📧 Automations", "📢 Announcements"])
     
     df_all = pd.read_sql("SELECT * FROM students", conn)
     
@@ -925,7 +943,7 @@ elif role == "Advisor Dashboard":
     with tab4:
         st.markdown("### 📈 Analytics & Insights")
         if not df_all.empty:
-            st.write("Visual breakdown of student data.")
+            st.write("Interactive visual breakdown of student data.")
             
             df_all['Fee Status'] = df_all['Total Due'].apply(lambda x: 'Defaulter' if x > 0 else 'Fully Paid')
             
@@ -933,32 +951,34 @@ elif role == "Advisor Dashboard":
             
             with ac1:
                 st.subheader("Fee Payment Status")
-                fee_chart = alt.Chart(df_all).mark_arc(innerRadius=50).encode(
-                    theta=alt.Theta(field="Fee Status", aggregate="count"),
-                    color=alt.Color(field="Fee Status", type="nominal", scale=alt.Scale(domain=['Fully Paid', 'Defaulter'], range=['#2e7d32', '#d32f2f'])),
-                    tooltip=['Fee Status', 'count()']
-                ).interactive()
-                st.altair_chart(fee_chart, use_container_width=True)
+                fig_fee = px.pie(df_all, names="Fee Status", color="Fee Status", 
+                                 color_discrete_map={'Fully Paid':'#2e7d32', 'Defaulter':'#d32f2f'}, hole=0.4)
+                fig_fee.update_layout(margin=dict(t=10, b=0, l=0, r=0))
+                st.plotly_chart(fig_fee, use_container_width=True)
                 
             with ac2:
                 st.subheader("Attendance Distribution")
-                att_chart = alt.Chart(df_all).mark_bar().encode(
-                    x=alt.X("attendance_percent:Q", bin=alt.Bin(maxbins=10), title="Attendance %"),
-                    y=alt.Y("count()", title="Number of Students"),
-                    color=alt.value("#4b9fff"),
-                    tooltip=['count()']
-                ).interactive()
-                st.altair_chart(att_chart, use_container_width=True)
+                fig_att = px.histogram(df_all, x="attendance_percent", nbins=10, color_discrete_sequence=['#4b9fff'])
+                fig_att.update_layout(margin=dict(t=10, b=0, l=0, r=0))
+                st.plotly_chart(fig_att, use_container_width=True)
                 
-            st.subheader("CGPA vs Attendance")
-            scatter_chart = alt.Chart(df_all).mark_circle(size=60).encode(
-                x=alt.X("attendance_percent:Q", title="Attendance %"),
-                y=alt.Y("cgpa:Q", title="CGPA"),
-                color=alt.Color("branch:N", title="Branch"),
-                tooltip=["student_name", "branch", "cgpa", "attendance_percent"]
-            ).interactive()
-            st.altair_chart(scatter_chart, use_container_width=True)
+            st.subheader("CGPA vs Attendance by Branch")
+            fig_scatter = px.scatter(df_all, x="attendance_percent", y="cgpa", color="branch", 
+                                     hover_data=['student_name'])
+            fig_scatter.update_traces(marker=dict(size=10))
+            fig_scatter.update_layout(margin=dict(t=10, b=0, l=0, r=0))
+            st.plotly_chart(fig_scatter, use_container_width=True)
             
+            st.markdown("### 💰 Fee Collection Progress")
+            total_expected = df_all['college_fee_total'].sum() + df_all['exam_fee_total'].sum()
+            total_collected = df_all['college_fee_paid'].sum() + df_all['exam_fee_paid'].sum()
+            
+            if total_expected > 0:
+                progress = float(total_collected / total_expected)
+                st.progress(progress)
+                st.write(f"**{progress*100:.1f}%** of all fees collected (₹{total_collected:,.2f} / ₹{total_expected:,.2f})")
+            else:
+                st.info("No fee data available to calculate progress.")
         else:
             st.info("No data available for analytics.")
 
@@ -1005,6 +1025,37 @@ elif role == "Advisor Dashboard":
                     col2.link_button(f"📧 Send Email", mailto_link, use_container_width=True)
                     
                 st.success(f"Generated email links for {len(targets)} students. Click them to send!")
+                
+    with tab6:
+        st.markdown("### 📢 Post Announcements")
+        st.write("Announcements posted here will be visible to all students on their portal.")
+        
+        with st.form("announcement_form"):
+            a_title = st.text_input("Announcement Title")
+            a_msg = st.text_area("Message")
+            if st.form_submit_button("Post Announcement", type="primary"):
+                if a_title and a_msg:
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO announcements (date_posted, title, message) VALUES (?, ?, ?)", 
+                                   (datetime.now().strftime("%Y-%m-%d %H:%M"), a_title, a_msg))
+                    conn.commit()
+                    st.success("Announcement posted successfully!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Title and message are required.")
+                    
+        st.markdown("#### Active Announcements")
+        ann_df = pd.read_sql("SELECT * FROM announcements ORDER BY id DESC", conn)
+        if not ann_df.empty:
+            for _, row in ann_df.iterrows():
+                st.info(f"**{row['title']}** ({row['date_posted']})\n\n{row['message']}")
+                if st.button(f"Delete", key=f"del_ann_{row['id']}"):
+                    conn.cursor().execute("DELETE FROM announcements WHERE id=?", (row['id'],))
+                    conn.commit()
+                    st.rerun()
+        else:
+            st.write("No active announcements.")
 
 # Close the global connection at the end of the script run
 if 'conn' in locals():
