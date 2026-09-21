@@ -124,7 +124,7 @@ st.markdown("""
 
 # --- DATABASE SETUP ---
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS students (
@@ -181,7 +181,7 @@ def init_db():
     conn.close()
 
 def load_excel_to_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     df_check = pd.read_sql("SELECT COUNT(*) FROM students", conn)
     if df_check.iloc[0, 0] == 0:
         try:
@@ -223,7 +223,7 @@ if 'student_sno' not in st.session_state:
 st.sidebar.title("Navigation")
 role = st.sidebar.radio("Select Portal View", ["Student Portal", "Advisor Dashboard"])
 
-conn = sqlite3.connect(DB_NAME)
+conn = sqlite3.connect(DB_NAME, check_same_thread=False)
 
 # --- STUDENT PORTAL ---
 if role == "Student Portal":
@@ -522,7 +522,7 @@ elif role == "Advisor Dashboard":
                                 )
                                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (
-                                str(new_sno), new_name.strip(), new_branch.strip(), new_mobile.strip(), new_umis.strip(), 
+                                new_sno, new_name.strip(), new_branch.strip(), new_mobile.strip(), new_umis.strip(), 
                                 new_aadhaar.strip(), new_email.strip(), new_dob, new_gender, new_blood, new_gname, 
                                 new_gmobile, new_address, new_cgpa, new_attendance
                             ))
@@ -695,8 +695,15 @@ elif role == "Advisor Dashboard":
                     cursor.execute("DELETE FROM students WHERE s_no=?", (s_no,))
                     
                 # Identify Inserts and Updates
+                import math
                 for _, row in edited_df.iterrows():
                     row_dict = row.to_dict()
+                    
+                    # Convert NaN floats back to None (NULL in SQLite)
+                    for k, v in row_dict.items():
+                        if isinstance(v, float) and math.isnan(v):
+                            row_dict[k] = None
+                            
                     s_no = row_dict.pop('s_no', None)
                     row_dict.pop('Total Due', None)
                     row_dict.pop('WhatsApp', None)
@@ -853,7 +860,7 @@ elif role == "Advisor Dashboard":
                             cursor.execute('''
                                 INSERT INTO students (s_no, student_name, branch, year_of_study, course_type, status, college_fee_total, college_fee_paid, exam_fee_total, exam_fee_paid)
                                 VALUES (?, ?, ?, ?, ?, 'Pending', 0.0, 0.0, 0.0, 0.0)
-                            ''', (str(next_sno), student_name, branch_val, year_val, course_val))
+                            ''', (next_sno, student_name, branch_val, year_val, course_val))
                             next_sno += 1
                             added_count += 1
                             
@@ -959,7 +966,7 @@ elif role == "Advisor Dashboard":
         st.markdown("### 📧 Email Automations")
         st.write("Send automated emails to students based on their status.")
         
-        st.info("Emails will be sent using the SMTP credentials configured in Streamlit Secrets. If not found, it runs in 'Simulation Mode'.")
+        st.info("Select a group below to instantly generate customized email drafts.")
         
         target_group = st.radio("Select Target Group", ["Fee Defaulters", "Low Attendance (< 75%)"])
         
@@ -979,7 +986,7 @@ elif role == "Advisor Dashboard":
                 st.write(f"**Found {len(targets)} students.**")
                 import urllib.parse
                 
-                st.info("Since direct SMTP is disabled, click the buttons below to open your default email app (like Gmail or Outlook). The email will be automatically pre-filled for you!")
+                st.info("Click the buttons below to open your default email app (like Gmail or Outlook). The email will be automatically pre-filled for you!")
                 
                 for i, (_, row) in enumerate(targets.iterrows()):
                     body = body_template.format(
