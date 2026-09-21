@@ -965,50 +965,27 @@ elif role == "Advisor Dashboard":
                 st.success("No students found in this category with a valid email address.")
             else:
                 st.write(f"**Found {len(targets)} students.**")
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+                import urllib.parse
                 
-                smtp_user = st.secrets.get("smtp_user", None)
-                smtp_pass = st.secrets.get("smtp_pass", None)
+                st.info("Since direct SMTP is disabled, click the buttons below to open your default email app (like Gmail or Outlook). The email will be automatically pre-filled for you!")
                 
-                if smtp_user: smtp_user = smtp_user.strip()
-                if smtp_pass: smtp_pass = smtp_pass.strip()
-                
-                simulation = not (smtp_user and smtp_pass)
-                
-                try:
-                    if not simulation:
-                        server = smtplib.SMTP('smtp.gmail.com', 587)
-                        server.starttls()
-                        server.login(smtp_user, smtp_pass)
-                        
-                    for i, (_, row) in enumerate(targets.iterrows()):
-                        status_text.text(f"Sending to {row['student_name']} ({row['email']})...")
-                        msg = MIMEMultipart()
-                        msg['From'] = smtp_user if not simulation else "admin@mca-portal.com"
-                        msg['To'] = row['email']
-                        msg['Subject'] = subject
-                        
-                        body = body_template.format(
-                            name=row['student_name'], 
-                            due=row.get('Total Due', 0), 
-                            att=row.get('attendance_percent', 0)
-                        )
-                        msg.attach(MIMEText(body, 'plain'))
-                        
-                        if not simulation:
-                            server.send_message(msg)
-                        time.sleep(0.5) # Anti-spam / simulation delay
-                        progress_bar.progress((i + 1) / len(targets))
-                        
-                    if not simulation:
-                        server.quit()
-                        
-                    status_text.text("All emails processed.")
-                    st.success(f"Successfully processed {len(targets)} emails!" + (" (Simulated)" if simulation else ""))
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"Failed to send emails: {e}")
+                for i, (_, row) in enumerate(targets.iterrows()):
+                    body = body_template.format(
+                        name=row['student_name'], 
+                        due=row.get('Total Due', 0), 
+                        att=row.get('attendance_percent', 0)
+                    )
+                    
+                    # URL encode the subject and body for the mailto link
+                    subject_enc = urllib.parse.quote(subject)
+                    body_enc = urllib.parse.quote(body)
+                    mailto_link = f"mailto:{row['email']}?subject={subject_enc}&body={body_enc}"
+                    
+                    col1, col2 = st.columns([3, 1])
+                    col1.write(f"**{row['student_name']}** ({row['email']})")
+                    col2.link_button(f"📧 Send Email", mailto_link, use_container_width=True)
+                    
+                st.success(f"Generated email links for {len(targets)} students. Click them to send!")
 
 # Close the global connection at the end of the script run
 if 'conn' in locals():
