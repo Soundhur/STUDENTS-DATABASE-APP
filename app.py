@@ -688,6 +688,7 @@ elif role == "Advisor Dashboard":
                 for _, row in edited_df.iterrows():
                     row_dict = row.to_dict()
                     s_no = row_dict.pop('s_no', None)
+                    row_dict.pop('Total Due', None)
                     if pd.isna(s_no): # New Row
                         cols = list(row_dict.keys())
                         vals = list(row_dict.values())
