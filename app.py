@@ -651,6 +651,9 @@ elif role == "Advisor Dashboard":
             st.markdown("### 📋 Student Directory")
             st.write("💡 *Tip: You can edit any cell directly, add new rows at the bottom, or select rows to delete.*")
             
+            filtered_df['WhatsApp'] = filtered_df['mobile_number'].apply(lambda x: f"https://wa.me/91{x}" if pd.notna(x) and str(x).strip() else None)
+            filtered_df['Send_Email'] = filtered_df['email'].apply(lambda x: f"mailto:{x}" if pd.notna(x) and str(x).strip() else None)
+            
             # Interactive Data Editor
             edited_df = st.data_editor(
                 filtered_df, 
@@ -665,6 +668,16 @@ elif role == "Advisor Dashboard":
                     ),
                     "s_no": st.column_config.NumberColumn(
                         "s_no",
+                        disabled=True
+                    ),
+                    "WhatsApp": st.column_config.LinkColumn(
+                        "💬 WhatsApp",
+                        display_text="Message",
+                        disabled=True
+                    ),
+                    "Send_Email": st.column_config.LinkColumn(
+                        "📧 Email",
+                        display_text="Send Email",
                         disabled=True
                     )
                 },
@@ -686,6 +699,8 @@ elif role == "Advisor Dashboard":
                     row_dict = row.to_dict()
                     s_no = row_dict.pop('s_no', None)
                     row_dict.pop('Total Due', None)
+                    row_dict.pop('WhatsApp', None)
+                    row_dict.pop('Send_Email', None)
                     if pd.isna(s_no): # New Row
                         cols = list(row_dict.keys())
                         vals = list(row_dict.values())
