@@ -970,6 +970,10 @@ elif role == "Advisor Dashboard":
                 
                 smtp_user = st.secrets.get("smtp_user", None)
                 smtp_pass = st.secrets.get("smtp_pass", None)
+                
+                if smtp_user: smtp_user = smtp_user.strip()
+                if smtp_pass: smtp_pass = smtp_pass.strip()
+                
                 simulation = not (smtp_user and smtp_pass)
                 
                 try:
