@@ -86,10 +86,7 @@ st.markdown("""
         100% { box-shadow: 0 0 5px rgba(75, 159, 255, 0.4); }
     }
 
-    /* Apply fade in to main containers */
-    .block-container {
-        animation: fadeIn 0.8s ease-out;
-    }
+
 
     /* Input Field Enhancements */
     .stTextInput input, .stSelectbox > div[data-baseweb="select"] {
